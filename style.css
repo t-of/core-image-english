@@ -276,6 +276,7 @@ h1{font-size:1.1875rem; margin:4px 0 14px; letter-spacing:.02em}
 .stat{flex:1; background:var(--surface); border:1px solid var(--line);
   border-radius:12px; padding:13px 10px; text-align:center}
 .stat b{display:block; font-size:1.5rem; line-height:1.2}
+.stat b small{font-size:0.8125rem; font-weight:500; color:var(--muted)}
 .stat span{font-size:0.71875rem; color:var(--muted)}
 
 .backlink{

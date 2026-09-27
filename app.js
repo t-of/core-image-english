@@ -14,7 +14,7 @@ const INTERVALS = [0, 1, 3, 7, 21, 60];   // SRS: box → 次回までの日数
 const DAY = 86400000;
 
 /* ---------- 設定 ---------- */
-const DEFAULTS = { theme:'auto', accent:'orange', fs:1, size:10, haptics:true, sound:true };
+const DEFAULTS = { theme:'auto', accent:'orange', fs:1, size:10, haptics:true, sound:true, hideChoices:false };
 const THEMES  = [{id:'auto',label:'自動',note:'端末に合わせる'},
                  {id:'light',label:'ライト',note:'明るい'},
                  {id:'dark',label:'ダーク',note:'暗い'}];
@@ -102,7 +102,8 @@ function play(kind){
        ここ（タップの処理の中）で作って起こすのがちょうどいい */
     setAudioSession(true);
     actx = actx || new AC();
-    if(actx.state === 'suspended') actx.resume();
+    /* iOS はアプリを裏に回すと 'interrupted' にする。'suspended' だけ見ていると戻っても鳴らない */
+    if(actx.state !== 'running') actx.resume();
     const now = actx.currentTime;
     t.notes.forEach(([hz, at, dur, vol]) => {
       const osc = actx.createOscillator(), g = actx.createGain();
@@ -118,6 +119,12 @@ function play(kind){
     });
   }catch(err){ /* 音が出せない環境でも学習は止めない */ }
 }
+
+/* 裏に回ったら音の出口を捨てる。戻ってから次に鳴らすとき、タップの中で作り直す。
+   iOS では中断された出口が resume しても生き返らないことがあるため */
+document.addEventListener('visibilitychange', () => {
+  if(document.hidden && actx){ actx.close().catch(() => {}); actx = null; }
+});
 
 /* 震えと音は必ず一緒に出す。片方だけ呼ぶと、設定を切ったときに
    手ごたえが半分だけ残って、壊れたように感じる */
@@ -443,15 +450,36 @@ const KIND_LABEL = { core:'コア適用', fill:'用法穴埋め', meaning:'意�
 /* どのページに属する問題かで絞れるようにする。
    「文法だけ集中的に」といった回し方ができると、学習の効率が変わる */
 const PAGE_TYPE = new Map(TEXTBOOK.map(p => [p.id, p.type]));
+
+/* 句動詞の「この○○はどの意味?」。手で書いた問題がない句動詞には、マトリクスから作る。
+   誤答は同じ動詞のほかの句動詞の意味にする（不変化詞のコアを取り違えたら選ぶもの）。
+   足りなければ同じ不変化詞、それでも足りなければ残りから引く */
+const isMeaning = e => e.kind === 'phrasal' && e.question.includes('どの意味');
+{
+  const hasMeaning = new Set(EXERCISES.filter(isMeaning).map(e => e.id));
+  PHRASALS.forEach(x => {
+    const base = EXERCISES.find(e => e.id === `ph-${x.v}-${x.p}`);
+    if(!base || hasMeaning.has(base.id)) return;
+    const others = PHRASALS.filter(y => y !== x);
+    const pool = [...shuffle(others.filter(y => y.v === x.v)), ...shuffle(others.filter(y => y.v !== x.v && y.p === x.p)),
+                  ...shuffle(others.filter(y => y.v !== x.v && y.p !== x.p))];
+    const choices = shuffle([x.ja, ...pool.slice(0, 3).map(y => y.ja)]);
+    EXERCISES.push({ id:`phm-${x.v}-${x.p}`, kind:'phrasal', ref:base.ref, refSense:base.refSense,
+      prompt:x.en, question:`この ${x.v} ${x.p} はどの意味?`, choices, answer:choices.indexOf(x.ja),
+      explain:base.explain });
+  });
+}
+
 const SCOPES = [{id:'all',label:'すべて'},{id:'particle',label:'不変化詞'},
-                {id:'verb',label:'基本動詞'},{id:'phrasal',label:'句動詞'},
+                {id:'verb',label:'基本動詞'},{id:'phrasal',label:'句動詞'},{id:'phmean',label:'句動詞の意味'},
                 {id:'grammar',label:'文法'},{id:'word',label:'紛らわしい語'}];
 
 /* 句動詞の問題は、解説の飛び先として不変化詞・動詞のページを ref に持つ。
    絞り込みでは「句動詞」だけに属させる。両方に出すと、
    不変化詞を選んだつもりが句動詞ばかり出てくることになる */
 const inScope = e => state.scope === 'all'
-  || (state.scope === 'phrasal' ? e.kind === 'phrasal'
+  || (state.scope === 'phmean' ? isMeaning(e)
+    : state.scope === 'phrasal' ? e.kind === 'phrasal'
                                 : e.kind !== 'phrasal' && PAGE_TYPE.get(e.ref) === state.scope);
 
 function buildQueue(onlyWrong){
@@ -607,14 +635,17 @@ const V_MODES = [
 const bandOf = w => w[2] <= 333 ? 1 : w[2] <= 666 ? 2 : 3;
 const vKey   = w => 'w:' + w[0];
 
-function buildVocabQueue(onlyWrong){
+/* src: 'due'（新しい語と間隔があいた語） / 'wrong'（復習タブから：帯をまたいで誤答だけ）
+        / 'all'（この帯で一度でも解いた語を、間隔に関係なくもう一度） */
+function buildVocabQueue(src){
   const now = Date.now();
   const pool = VOCAB.filter(w => {
     const t = store.rec[vKey(w)];
-    if(onlyWrong) return t && t.w > 0 && t.due <= now;   // 復習タブから：帯をまたいで誤答だけ
-    return bandOf(w) === state.vBand && (!t || t.due <= now);
+    if(src === 'wrong') return t && t.w > 0 && t.due <= now;
+    if(bandOf(w) !== state.vBand) return false;
+    return src === 'all' ? !!t : (!t || t.due <= now);
   });
-  return { list: shuffle(pool).slice(0, sessionSize()), i:0, sel:null, right:0, typed:'', judged:false };
+  return { src, list: shuffle(pool).slice(0, sessionSize()), i:0, sel:null, right:0, typed:'', judged:false };
 }
 
 /* 4択の誤答は同じ帯から引く（難易度をそろえるため） */
@@ -629,6 +660,8 @@ function viewVocabStart(){
   const band = VOCAB.filter(w => bandOf(w) === state.vBand);
   const due  = band.filter(w => { const t = store.rec[vKey(w)]; return !t || t.due <= now; }).length;
   const withPage = band.filter(w => w[6]).length;
+  const recs = band.map(w => store.rec[vKey(w)]).filter(Boolean);
+  const answers = recs.reduce((n, t) => n + t.r + t.w, 0);
   return `
     ${headRow('単語')}
     ${vocabTabs()}
@@ -637,6 +670,10 @@ function viewVocabStart(){
     <div class="stat-row">
       <div class="stat"><b>${due}</b><span>出題できる</span></div>
       <div class="stat"><b>${withPage}</b><span>コアページあり</span></div>
+    </div>
+    <div class="stat-row">
+      <div class="stat"><b>${recs.length}<small> / ${band.length}</small></b><span>この帯で解いた語</span></div>
+      <div class="stat"><b>${answers}</b><span>のべ回答数</span></div>
     </div>
 
     <div class="sec-label">どの帯を</div>
@@ -647,10 +684,18 @@ function viewVocabStart(){
     <div class="seg">${V_MODES.map(m => `<button data-vmode="${m.id}" aria-current="${m.id === state.vMode}">
       ${m.label}<small>${m.note}</small></button>`).join('')}</div>
 
+    ${state.vMode === 'spell' ? '' : `<div class="sec-label">選択肢</div>
+    <div class="seg">${[{id:'off',label:'すぐ出す',note:'見て選ぶ'},
+                        {id:'on', label:'考えてから',note:'押すと出る'}].map(o =>
+      `<button data-set="hideChoices" data-val="${o.id}" aria-current="${o.id === (store.set.hideChoices ? 'on' : 'off')}">
+      ${o.label}<small>${o.note}</small></button>`).join('')}</div>`}
+
     ${due ? `<button class="btn primary" data-vstart style="margin-top:6px">${
         Math.min(due, sessionSize())}語はじめる</button>`
           : `<div class="empty"><span class="ic">✓</span>
                この帯でいま出題できる語はありません。<br>別の帯を選ぶか、間隔があくのを待ちます。</div>`}
+    ${recs.length ? `<button class="btn" data-vstartall style="margin-top:10px">
+        解いた${recs.length}語から${Math.min(recs.length, sessionSize())}語を復習する</button>` : ''}
 
     <div class="card" style="margin-top:16px;color:var(--muted);font-size:13px;line-height:1.85">
       この1000語のうち<b style="color:var(--text)">66語</b>は、教科書にコアページを持っています。
@@ -666,7 +711,7 @@ function viewVocabDone(){
     <div class="big">${pct === 100 ? '🎉' : pct >= 70 ? '👍' : '🔤'}</div>
     <h1 class="center">${q.right} / ${n} 正解</h1>
     <p class="sub center">間違えた語は復習に回りました</p>
-    <button class="btn primary" data-vstart style="margin-top:20px">続ける</button>
+    <button class="btn primary" ${q.src === 'all' ? 'data-vstartall' : 'data-vstart'} style="margin-top:20px">続ける</button>
     <button class="btn" data-tab="vocab" style="margin-top:10px">単語トップへ</button>`;
 }
 
@@ -713,6 +758,10 @@ function viewVocab(){
        value="${esc(q.typed)}" placeholder="英語を入力" ${answered ? 'disabled' : ''}>
       ${answered ? '' : '<button class="btn primary" data-vcheck style="margin-top:10px">答え合わせ</button>'}`;
   }
+
+  /* 「考えてから」のときは、先に答えを思い浮かべてから選択肢を開く */
+  if(mode !== 'spell' && store.set.hideChoices && !q.shown && !answered)
+    body = `<button class="btn primary" data-vshow>選択肢を見る</button>`;
 
   /* 答え合わせ。英→日のときは問題文に単語が出ているので繰り返さない */
   const showWord = mode !== 'ja';
@@ -1051,7 +1100,8 @@ function watchSenses(){
 }
 
 /* 次に開いたとき、前に見ていたところから始められるようにする。
-   演習や単語の途中の1問までは覚えない（途中再開はかえって迷う） */
+   演習や単語の途中の1問までは覚えない（途中再開はかえって迷う）。
+   開いているあいだのタブの行き来では、途中の問題も残す（上の data-tab） */
 function rememberPlace(){
   const l = { tab: state.tab, page: state.page, cat: state.cat };
   if(JSON.stringify(l) !== JSON.stringify(store.last)){ store.last = l; save(); }
@@ -1161,7 +1211,7 @@ document.addEventListener('click', ev => {
     '[data-start],[data-startover],[data-startwrong],[data-goto],[data-quizref],[data-jump],'+
     '[data-quizphrasal],'+
     '[data-cell],[data-verb],[data-vband],[data-vmode],[data-vstart],[data-vpick],'+
-    '[data-vcheck],[data-vnext],[data-vstartwrong],'+
+    '[data-vcheck],[data-vnext],[data-vshow],[data-vstartwrong],[data-vstartall],'+
     '[data-panel],[data-close],[data-set],[data-reset],[data-reset-yes],[data-clearq],'+
     '[data-scope],[data-cat],[data-vtab],[data-word],[data-vfilter],[data-clearvq]');
   if(!t) return;
@@ -1183,6 +1233,7 @@ document.addEventListener('click', ev => {
     if(d.set === 'fs')      store.set.fs     = +v;
     if(d.set === 'size')    store.set.size   = +v;
     if(d.set === 'sound'){ store.set.sound = v === 'on'; play('ok'); }
+    if(d.set === 'hideChoices') store.set.hideChoices = v === 'on';
     if(d.set === 'haptics'){ store.set.haptics = v === 'on'; buzz(true); }
     save(); applySettings(); render(); return;
   }
@@ -1193,13 +1244,17 @@ document.addEventListener('click', ev => {
     state.tab = 'book'; state.page = null; render(); return;
   }
 
-  if(d.tab !== undefined){ state.tab = d.tab; state.page = null;
-                           if(d.tab === 'vocab') state.vocab = null; }
+  /* ほかのタブへ移るときは、各タブの途中（開いていたページ、解いていた問題）を残す。
+     戻ったらそこから続けられる。いま開いているタブをもう一度押したときだけトップに戻る */
+  if(d.tab !== undefined){
+    if(d.tab === state.tab){ state.page = null; if(d.tab === 'vocab') state.vocab = null; }
+    state.tab = d.tab;
+  }
   else if(d.open)         { state.page = d.open; state.cell = null; state.qFocus = false; }
   else if(d.back !== undefined){ state.page = null; }
-  else if(d.quizref)      { state.tab = 'quiz'; state.page = null; startQuiz(d.quizref); }
+  else if(d.quizref)      { state.tab = 'quiz'; startQuiz(d.quizref); }
   else if(d.quizphrasal !== undefined){
-    state.tab = 'quiz'; state.page = null; state.scope = 'phrasal'; startQuiz(null, false); }
+    state.tab = 'quiz'; state.scope = 'phrasal'; startQuiz(null, false); }
   else if(d.start !== undefined || d.startover !== undefined){ startQuiz(null, false); }
   else if(d.startwrong !== undefined){ startQuiz(null, true); }
   else if(d.goto)         { state.tab = 'book'; state.page = d.goto; state.focusSense = d.sense || null; }
@@ -1225,10 +1280,10 @@ document.addEventListener('click', ev => {
   else if(d.clearvq !== undefined){ state.vq = ''; state.vqFocus = true; }
   else if(d.vband)        { state.vBand = +d.vband; state.vocab = null; state.vOpen = null; }
   else if(d.vmode)        { state.vMode = d.vmode;  state.vocab = null; }
-  else if(d.vstart !== undefined || d.vstartwrong !== undefined){
-    const onlyWrong = d.vstartwrong !== undefined;
-    state.vocab = buildVocabQueue(onlyWrong);
-    if(onlyWrong) state.tab = 'vocab';
+  else if(d.vstart !== undefined || d.vstartwrong !== undefined || d.vstartall !== undefined){
+    const src = d.vstartwrong !== undefined ? 'wrong' : d.vstartall !== undefined ? 'all' : 'due';
+    state.vocab = buildVocabQueue(src);
+    if(src === 'wrong'){ state.tab = 'vocab'; state.vTab = 'test'; }
     if(state.vocab.list.length) state.vocab.choices = vocabChoices(state.vocab.list[0]);
   }
   else if(d.vpick){
@@ -1248,9 +1303,10 @@ document.addEventListener('click', ev => {
     if(ok) q.right++;
     grade(vKey(w), ok); feedback(ok);
   }
+  else if(d.vshow !== undefined){ state.vocab.shown = true; }
   else if(d.vnext !== undefined){
     const q = state.vocab;
-    q.i++; q.sel = null; q.typed = ''; q.judged = false;
+    q.i++; q.sel = null; q.typed = ''; q.judged = false; q.shown = false;
     if(q.i < q.list.length) q.choices = vocabChoices(q.list[q.i]);
     else play('done');
   }
