@@ -832,8 +832,7 @@ const V_FILTERS = [
   { id:'all',   label:'すべて' },
   { id:'new',   label:'未出題' },
   { id:'wrong', label:'間違えた' },
-  { id:'done',  label:'正解済み' },
-  { id:'art',   label:'絵あり' }
+  { id:'done',  label:'正解済み' }
 ];
 
 function wordState(w){
@@ -847,8 +846,7 @@ function filterWords(){
   const q = state.vq.trim().toLowerCase();
   return VOCAB.filter(w => {
     if(bandOf(w) !== state.vBand && !q) return false;   /* 検索中は帯をまたぐ */
-    if(state.vFilter === 'art'){ if(!hasArt(w[0])) return false; }
-    else if(state.vFilter !== 'all' && wordState(w) !== state.vFilter) return false;
+    if(state.vFilter !== 'all' && wordState(w) !== state.vFilter) return false;
     if(!q) return true;
     return w[0].toLowerCase().includes(q) || w[1].includes(q)
         || w[3].toLowerCase().includes(q) || w[4].includes(q);
@@ -894,7 +892,6 @@ function wordRow(w){
         <b>${esc(w[0])}</b>
         <span class="wb-ja">${esc(w[1])}</span>
       </span>
-      ${hasArt(w[0]) ? '<span class="wb-art" aria-label="絵あり">🖼</span>' : ''}
       <span class="wb-caret">${open ? '▲' : '▼'}</span>
     </button>
     ${open ? `<div class="wb-body">
