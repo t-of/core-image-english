@@ -458,7 +458,8 @@ h1{font-size:1.1875rem; margin:4px 0 14px; letter-spacing:.02em}
 .g-row{display:flex; align-items:center; gap:8px}
 .g-cells{display:flex; gap:3px; min-width:0}
 .g-cell{
-  width:clamp(28px, 4.4vh, 40px); flex:0 0 auto; aspect-ratio:1; display:flex; align-items:center; justify-content:center;
+  /* 長い語（最大14文字）でも1行に収まるよう、横幅でも縮める */
+  width:min(clamp(28px, 4.4vh, 40px), calc((min(100vw, 600px) - 94px) / var(--n, 5) - 3px)); flex:0 0 auto; aspect-ratio:1; display:flex; align-items:center; justify-content:center;
   border:1px solid var(--line); border-radius:6px; background:var(--surface);
   font-family:Georgia,serif; font-weight:700; font-size:0.75rem; color:var(--text);
   user-select:none;

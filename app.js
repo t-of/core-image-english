@@ -1,14 +1,14 @@
 /* ============================================================
    コアイメージ英語 — アプリ本体
    ============================================================ */
-/* 5文字あてゲームの判定 ── 緑（位置も文字も合う）・黄（文字だけ合う）・赤（合わない）の
+/* 単語あてゲームの判定 ── 緑（位置も文字も合う）・黄（文字だけ合う）・赤（合わない）の
    合計数だけを返す。位置は教えない。重複文字は Wordle と同じ扱い（多重に数えない）。
    DOM に触れない純粋な関数なので、node app.js だけでも自己チェックが走る */
 function scoreGuess(guess, answer){
   const g = guess.split(''), a = answer.split('');
   let green = 0;
   const gRem = [], aRem = [];
-  for(let i = 0; i < 5; i++){
+  for(let i = 0; i < g.length; i++){
     if(g[i] === a[i]) green++;
     else { gRem.push(g[i]); aRem.push(a[i]); }
   }
@@ -16,7 +16,7 @@ function scoreGuess(guess, answer){
   aRem.forEach(c => freq[c] = (freq[c] || 0) + 1);
   let yellow = 0;
   gRem.forEach(c => { if(freq[c] > 0){ yellow++; freq[c]--; } });
-  return { green, yellow, red: 5 - green - yellow };
+  return { green, yellow, red: g.length - green - yellow };
 }
 if(typeof require !== 'undefined' && require.main === module){
   const assert = require('assert');
@@ -24,6 +24,7 @@ if(typeof require !== 'undefined' && require.main === module){
   assert.deepStrictEqual(scoreGuess('eabcd', 'abcde'), { green:0, yellow:5, red:0 });
   assert.deepStrictEqual(scoreGuess('speed', 'count'), { green:0, yellow:0, red:5 });
   assert.deepStrictEqual(scoreGuess('sassy', 'glass'), { green:1, yellow:2, red:2 }); // 重複文字
+  assert.deepStrictEqual(scoreGuess('tea', 'eat'), { green:0, yellow:3, red:0 });      // 5文字以外
   console.log('scoreGuess: ok');
   process.exit(0);
 }
@@ -924,16 +925,18 @@ function vocabSenses(w){
 }
 
 /* ============================================================
-   5文字あてゲーム ── Word500風。単語帳にある5文字の語だけが出題・回答になる。
+   単語あてゲーム ── Word500風。単語帳にある3文字以上の語が出題・回答になる。
+   文字数は答えごとに変わり、回答は同じ文字数の単語帳の語に限る。
    位置ごとの正誤は教えず、緑・黄・赤の合計数だけを見せる（Mastermind式）。
    どの文字がどれかは、過去の行の文字を押して自分で印をつける（推理の道具）
    ============================================================ */
-const WORD5 = VOCAB.filter(w => /^[a-z]{5}$/.test(w[0]));
-const WORD5_SET = new Set(WORD5.map(w => w[0]));
+const GAME_WORDS = VOCAB.filter(w => /^[a-z]{3,}$/.test(w[0]));
+const GAME_SET = new Set(GAME_WORDS.map(w => w[0]));
+const gLen = () => state.game.answer[0].length;
 const GUESS_MAX = 8;
 
 function newGameState(){
-  return { answer: WORD5[Math.floor(Math.random() * WORD5.length)],
+  return { answer: GAME_WORDS[Math.floor(Math.random() * GAME_WORDS.length)],
            guesses:[], typed:'', marks:{}, over:false, won:false, msg:'' };
 }
 
@@ -945,9 +948,9 @@ function toggleMark(letter){
 
 function submitGuess(){
   const g = state.game;
-  if(!g || g.over || g.typed.length !== 5) return;
+  if(!g || g.over || g.typed.length !== gLen()) return;
   const word = g.typed;
-  if(!WORD5_SET.has(word)){ g.msg = '単語帳にない語です'; return; }
+  if(!GAME_SET.has(word)){ g.msg = '単語帳にない語です'; return; }
   g.guesses.push({ word, score: scoreGuess(word, g.answer[0]) });
   g.typed = ''; g.msg = '';
   if(word === g.answer[0]){
@@ -983,7 +986,7 @@ function gameGuessRow(guess){
   return gameRow(cells, guess.score);
 }
 function gameEmptyRow(typed){
-  const cells = Array.from({ length:5 }, (_, i) =>
+  const cells = Array.from({ length:gLen() }, (_, i) =>
     `<div class="g-cell${typed && typed[i] ? ' filled' : ''}">${typed && typed[i] ? typed[i].toUpperCase() : ''}</div>`).join('');
   return gameRow(cells, null);
 }
@@ -1009,9 +1012,9 @@ function viewGame(){
     ${headRow('単語')}
     ${vocabTabs()}
     <p class="sub" style="margin:-8px 0 6px; font-size:0.75rem; line-height:1.4">
-      5文字を8回まで。緑＝位置も文字も合う／黄＝文字のみ合う／赤＝含まれない。文字を押すと印をつけられます。</p>
+      ${gLen()}文字の語を8回まで。緑＝位置も文字も合う／黄＝文字のみ合う／赤＝含まれない。文字を押すと印をつけられます。</p>
 
-    <div class="g-board">${rows.join('')}</div>
+    <div class="g-board" style="--n:${gLen()}">${rows.join('')}</div>
     ${g.msg ? `<p class="g-msg">${esc(g.msg)}</p>` : ''}
     ${g.over ? '' : gameKeyboard()}
 
@@ -1416,7 +1419,7 @@ document.addEventListener('keydown', ev => {
   if(ev.target.tagName === 'INPUT') return;
   const g = state.game;
   if(!g || g.over) return;
-  if(/^[a-z]$/i.test(ev.key) && g.typed.length < 5){ g.typed += ev.key.toLowerCase(); g.msg = ''; render(); }
+  if(/^[a-z]$/i.test(ev.key) && g.typed.length < gLen()){ g.typed += ev.key.toLowerCase(); g.msg = ''; render(); }
   else if(ev.key === 'Backspace'){ g.typed = g.typed.slice(0, -1); render(); }
   else if(ev.key === 'Enter'){ submitGuess(); render(); }
 });
@@ -1527,7 +1530,7 @@ document.addEventListener('click', ev => {
     else play('done');
   }
   else if(d.gmark)        { toggleMark(d.gmark); }
-  else if(d.gkey)         { const g = state.game; if(g && !g.over && g.typed.length < 5){ g.typed += d.gkey; g.msg = ''; } }
+  else if(d.gkey)         { const g = state.game; if(g && !g.over && g.typed.length < gLen()){ g.typed += d.gkey; g.msg = ''; } }
   else if(d.gback !== undefined){ const g = state.game; if(g && !g.over) g.typed = g.typed.slice(0, -1); }
   else if(d.genter !== undefined){ submitGuess(); }
   else if(d.greset !== undefined){ state.game = newGameState(); }
