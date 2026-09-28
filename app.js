@@ -1,6 +1,33 @@
 /* ============================================================
    コアイメージ英語 — アプリ本体
    ============================================================ */
+/* 5文字あてゲームの判定 ── 緑（位置も文字も合う）・黄（文字だけ合う）・赤（合わない）の
+   合計数だけを返す。位置は教えない。重複文字は Wordle と同じ扱い（多重に数えない）。
+   DOM に触れない純粋な関数なので、node app.js だけでも自己チェックが走る */
+function scoreGuess(guess, answer){
+  const g = guess.split(''), a = answer.split('');
+  let green = 0;
+  const gRem = [], aRem = [];
+  for(let i = 0; i < 5; i++){
+    if(g[i] === a[i]) green++;
+    else { gRem.push(g[i]); aRem.push(a[i]); }
+  }
+  const freq = {};
+  aRem.forEach(c => freq[c] = (freq[c] || 0) + 1);
+  let yellow = 0;
+  gRem.forEach(c => { if(freq[c] > 0){ yellow++; freq[c]--; } });
+  return { green, yellow, red: 5 - green - yellow };
+}
+if(typeof require !== 'undefined' && require.main === module){
+  const assert = require('assert');
+  assert.deepStrictEqual(scoreGuess('apple', 'apple'), { green:5, yellow:0, red:0 });
+  assert.deepStrictEqual(scoreGuess('eabcd', 'abcde'), { green:0, yellow:5, red:0 });
+  assert.deepStrictEqual(scoreGuess('speed', 'count'), { green:0, yellow:0, red:5 });
+  assert.deepStrictEqual(scoreGuess('sassy', 'glass'), { green:1, yellow:2, red:2 }); // 重複文字
+  console.log('scoreGuess: ok');
+  process.exit(0);
+}
+
 /* 教科書は各データファイルを連結して作る（順序がそのまま目次の順序） */
 const TEXTBOOK = [].concat(
   typeof PARTICLES !== 'undefined' ? PARTICLES : [],
@@ -30,8 +57,9 @@ function load(){
   try { const o = JSON.parse(localStorage.getItem(KEY)) || {};
         return { rec:o.rec || {}, cells:o.cells || {}, read:o.read || {},
                  set:{ ...DEFAULTS, ...(o.set || {}) },
+                 game:{ played:0, correct:0, ...(o.game || {}) },
                  last:o.last || null }; }
-  catch(e){ return { rec:{}, cells:{}, read:{}, set:{ ...DEFAULTS }, last:null }; }
+  catch(e){ return { rec:{}, cells:{}, read:{}, set:{ ...DEFAULTS }, game:{ played:0, correct:0 }, last:null }; }
 }
 
 /* 設定を画面に反映する。CSS 側は data-theme / data-accent / --fs だけを見ている */
@@ -144,7 +172,7 @@ function grade(id, ok){
 
 const state = { tab:'book', page:null, focusSense:null, quiz:null, cell:null, mxVerb:'get',
                 vocab:null, vBand:1, vMode:'ja', panel:null, q:'', scope:'all', cat:'particle',
-                vTab:'test', vq:'', vFilter:'all', vOpen:null };
+                vTab:'test', vq:'', vFilter:'all', vOpen:null, game:null };
 const MATRIX_ID = '__matrix';
 const $ = s => document.querySelector(s);
 
@@ -896,6 +924,101 @@ function vocabSenses(w){
 }
 
 /* ============================================================
+   5文字あてゲーム ── Word500風。単語帳にある5文字の語だけが出題・回答になる。
+   位置ごとの正誤は教えず、緑・黄・赤の合計数だけを見せる（Mastermind式）。
+   どの文字がどれかは、過去の行の文字を押して自分で印をつける（推理の道具）
+   ============================================================ */
+const WORD5 = VOCAB.filter(w => /^[a-z]{5}$/.test(w[0]));
+const WORD5_SET = new Set(WORD5.map(w => w[0]));
+const GUESS_MAX = 8;
+
+function newGameState(){
+  return { answer: WORD5[Math.floor(Math.random() * WORD5.length)],
+           guesses:[], typed:'', marks:{}, over:false, won:false, msg:'' };
+}
+
+/* 印は文字ごと（位置ではない）。なし → ない（暗く） → ある（緑っぽく） → なし、の3状態を回す */
+function toggleMark(letter){
+  const m = state.game.marks, cur = m[letter] || 0, next = (cur + 1) % 3;
+  if(next === 0) delete m[letter]; else m[letter] = next;
+}
+
+function submitGuess(){
+  const g = state.game;
+  if(!g || g.over || g.typed.length !== 5) return;
+  const word = g.typed;
+  if(!WORD5_SET.has(word)){ g.msg = '単語帳にない語です'; return; }
+  g.guesses.push({ word, score: scoreGuess(word, g.answer[0]) });
+  g.typed = ''; g.msg = '';
+  if(word === g.answer[0]){
+    g.over = true; g.won = true;
+    store.game.played++; store.game.correct++; save();
+    buzz(true); play('done');
+  }else if(g.guesses.length >= GUESS_MAX){
+    g.over = true; g.won = false;
+    store.game.played++; save();
+    buzz(false); play('ng');
+  }
+}
+
+const gMarkCls = ch => { const s = state.game.marks[ch] || 0; return s === 1 ? ' off' : s === 2 ? ' on' : ''; };
+
+function gameGuessRow(guess){
+  const cells = guess.word.split('').map(ch =>
+    `<div class="g-cell${gMarkCls(ch)}" data-gmark="${ch}">${ch.toUpperCase()}</div>`).join('');
+  return `<div class="g-row"><div class="g-cells">${cells}</div>
+    <div class="g-score">
+      <span class="gn green">${guess.score.green}</span>
+      <span class="gn yellow">${guess.score.yellow}</span>
+      <span class="gn red">${guess.score.red}</span>
+    </div></div>`;
+}
+function gameEmptyRow(typed){
+  const cells = Array.from({ length:5 }, (_, i) =>
+    `<div class="g-cell${typed && typed[i] ? ' filled' : ''}">${typed && typed[i] ? typed[i].toUpperCase() : ''}</div>`).join('');
+  return `<div class="g-row"><div class="g-cells">${cells}</div></div>`;
+}
+
+const G_ROWS = ['qwertyuiop', 'asdfghjkl', 'zxcvbnm'];
+function gameKeyboard(){
+  return `<div class="g-kb">${G_ROWS.map((row, i) => `<div class="g-kbrow">
+    ${i === 2 ? '<button class="g-key wide" data-genter>決定</button>' : ''}
+    ${row.split('').map(ch => `<button class="g-key${gMarkCls(ch)}" data-gkey="${ch}">${ch.toUpperCase()}</button>`).join('')}
+    ${i === 2 ? '<button class="g-key wide" data-gback aria-label="1文字消す">⌫</button>' : ''}
+  </div>`).join('')}</div>`;
+}
+
+function viewGame(){
+  const g = state.game || (state.game = newGameState());
+  const rows = [];
+  for(let i = 0; i < GUESS_MAX; i++)
+    rows.push(g.guesses[i] ? gameGuessRow(g.guesses[i])
+            : i === g.guesses.length && !g.over ? gameEmptyRow(g.typed) : gameEmptyRow());
+  const w = g.answer;
+
+  return `
+    ${headRow('単語')}
+    ${vocabTabs()}
+    <p class="sub">5文字の単語を8回まで当てます。緑＝位置も文字も合う数、黄＝文字は合うが位置違いの数、赤＝含まれない数。
+      どの文字かは教えません。行の文字を押すと、自分で「ない」「ある」の印をつけられます。</p>
+
+    <div class="g-board">${rows.join('')}</div>
+    ${g.msg ? `<p class="g-msg">${esc(g.msg)}</p>` : ''}
+    ${g.over ? '' : gameKeyboard()}
+
+    ${g.over ? `<div class="card v-result" style="margin-top:14px">
+      <div class="verdict ${g.won ? 'ok' : 'ng'}" role="status" aria-live="polite">${
+        g.won ? '◎ 正解' : '✗ 不正解'}</div>
+      <div class="v-word" style="font-size:1.375rem">${esc(w[0])}</div>
+      <div class="v-ipa">${esc(w[5])}</div>
+      ${vocabSenses(w)}
+      <button class="btn primary" data-greset style="margin-top:12px">もう一回</button>
+    </div>` : ''}
+
+    <p class="sub" style="margin-top:14px">これまで ${store.game.played}回中 ${store.game.correct}回正解</p>`;
+}
+
+/* ============================================================
    単語帳
    テストとは別に、1000語をただ眺めて調べられる場所。
    覚えているかを問われずに、意味・例文・豆知識・絵を見に行ける
@@ -977,10 +1100,11 @@ function wordRow(w){
   </div>`;
 }
 
-/* テストと単語帳の切り替え */
+/* テスト・単語帳・ゲームの切り替え */
 const vocabTabs = () => `<div class="seg" style="margin-bottom:14px">
   <button data-vtab="test" aria-current="${state.vTab === 'test'}">テスト</button>
   <button data-vtab="book" aria-current="${state.vTab === 'book'}">単語帳</button>
+  <button data-vtab="game" aria-current="${state.vTab === 'game'}">ゲーム</button>
 </div>`;
 
 /* ============================================================
@@ -1193,6 +1317,7 @@ function screenKey(){
   if(state.tab === 'vocab'){
     if(state.vocab) return 'vocabq:' + state.vocab.i;
     if(state.vTab === 'book') return 'wordbook:' + state.vBand + ':' + state.vFilter + ':' + state.vq;
+    if(state.vTab === 'game') return 'game';
     return 'vocabtop';
   }
   return 'review';
@@ -1210,7 +1335,8 @@ function render(){
                                        : state.page ? viewBookPage(state.page) : viewBookList();
   else if(state.tab === 'quiz')   html = viewQuiz();
   else if(state.tab === 'vocab')  html = state.vocab ? viewVocab()
-                                       : state.vTab === 'book' ? viewWordbook() : viewVocab();
+                                       : state.vTab === 'book' ? viewWordbook()
+                                       : state.vTab === 'game' ? viewGame() : viewVocab();
   else                            html = viewReview();
   /* 別の画面に移るときは #view を作り直す。iPhone の Safari では、スクロールした要素の中身を
      入れ替えて scrollTop を戻すと、押せる位置が前のスクロール分ずれたまま残り、
@@ -1275,6 +1401,17 @@ document.addEventListener('compositionend', ev => {
   state.q = ev.target.value; state.qFocus = true; render();
 });
 
+/* 物理キーボードでも遊べるように。#vin など既存の入力欄があるときは邪魔しない */
+document.addEventListener('keydown', ev => {
+  if(state.tab !== 'vocab' || state.vTab !== 'game') return;
+  if(ev.target.tagName === 'INPUT') return;
+  const g = state.game;
+  if(!g || g.over) return;
+  if(/^[a-z]$/i.test(ev.key) && g.typed.length < 5){ g.typed += ev.key.toLowerCase(); g.msg = ''; render(); }
+  else if(ev.key === 'Backspace'){ g.typed = g.typed.slice(0, -1); render(); }
+  else if(ev.key === 'Enter'){ submitGuess(); render(); }
+});
+
 document.addEventListener('click', ev => {
   const t = ev.target.closest('[data-tab],[data-open],[data-back],[data-pick],[data-next],' +
     '[data-start],[data-startover],[data-startwrong],[data-goto],[data-quizref],[data-jump],'+
@@ -1282,7 +1419,8 @@ document.addEventListener('click', ev => {
     '[data-cell],[data-verb],[data-vband],[data-vmode],[data-vstart],[data-vpick],'+
     '[data-vcheck],[data-vnext],[data-vshow],[data-vstartwrong],[data-vstartall],'+
     '[data-panel],[data-close],[data-set],[data-reset],[data-reset-yes],[data-clearq],'+
-    '[data-scope],[data-cat],[data-vtab],[data-word],[data-vfilter],[data-clearvq]');
+    '[data-scope],[data-cat],[data-vtab],[data-word],[data-vfilter],[data-clearvq],'+
+    '[data-gmark],[data-gkey],[data-gback],[data-genter],[data-greset]');
   if(!t) return;
   const d = t.dataset;
 
@@ -1379,6 +1517,11 @@ document.addEventListener('click', ev => {
     if(q.i < q.list.length) q.choices = vocabChoices(q.list[q.i]);
     else play('done');
   }
+  else if(d.gmark)        { toggleMark(d.gmark); }
+  else if(d.gkey)         { const g = state.game; if(g && !g.over && g.typed.length < 5){ g.typed += d.gkey; g.msg = ''; } }
+  else if(d.gback !== undefined){ const g = state.game; if(g && !g.over) g.typed = g.typed.slice(0, -1); }
+  else if(d.genter !== undefined){ submitGuess(); }
+  else if(d.greset !== undefined){ state.game = newGameState(); }
 
   render();
 });
