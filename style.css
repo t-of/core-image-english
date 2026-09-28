@@ -454,11 +454,11 @@ h1{font-size:1.1875rem; margin:4px 0 14px; letter-spacing:.02em}
    マスは最大34px角。数字の枠は全行に同じ幅で確保し（推測前は空の丸）、
    数字のある行だけ細くならないようにする。キーボードのキーはマスより
    縦を長くして、盤面より押しやすい大きさに見せる */
-.g-board{display:flex; flex-direction:column; gap:3px; margin-bottom:6px}
-.g-row{display:flex; align-items:center; gap:5px}
-.g-cells{display:flex; gap:3px; flex:1; min-width:0}
+.g-board{display:flex; flex-direction:column; align-items:center; gap:3px; margin-bottom:6px}
+.g-row{display:flex; align-items:center; gap:8px}
+.g-cells{display:flex; gap:3px; min-width:0}
 .g-cell{
-  flex:1; min-width:0; max-width:28px; aspect-ratio:1; display:flex; align-items:center; justify-content:center;
+  width:clamp(28px, 4.4vh, 40px); flex:0 0 auto; aspect-ratio:1; display:flex; align-items:center; justify-content:center;
   border:1px solid var(--line); border-radius:6px; background:var(--surface);
   font-family:Georgia,serif; font-weight:700; font-size:0.75rem; color:var(--text);
   user-select:none;
