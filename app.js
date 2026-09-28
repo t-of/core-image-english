@@ -731,7 +731,7 @@ function viewVocab(){
   let prompt, body;
   if(mode === 'ja'){
     /* 英→日は問題文にすでに単語が出ているので、品詞を見せてもヒントが増えすぎない */
-    prompt = `<div class="v-word">${esc(w[0])} ${posBadge(w[0])}</div><div class="v-ipa">${esc(w[5])}</div>`;
+    prompt = `<div class="v-word">${esc(w[0])} ${answered ? '' : posBadge(w[0])}</div><div class="v-ipa">${esc(w[5])}</div>`;
     body = `<div class="choices2">${q.choices.map(c => {
       let cls = 'btn choice';
       if(answered && c[0] === w[0]) cls += ' correct';
@@ -770,7 +770,7 @@ function viewVocab(){
     <div class="card v-result">
       <div class="verdict ${ok ? 'ok' : 'ng'}" role="status" aria-live="polite">${
         ok ? '◎ 正解' : '✗ 不正解'}${verbFormsRow(w[0])}</div>
-      ${showWord ? `<div class="v-word" style="font-size:1.375rem">${esc(w[0])} ${posBadge(w[0])}</div>
+      ${showWord ? `<div class="v-word" style="font-size:1.375rem">${esc(w[0])}</div>
                     <div class="v-ipa">${esc(w[5])}</div>` : ''}
       ${vocabSenses(w)}
       ${w[6] ? `<button class="linkto" data-goto="${w[6]}" data-sense=""
