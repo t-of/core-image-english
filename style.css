@@ -148,6 +148,14 @@ h1{font-size:1.1875rem; margin:4px 0 14px; letter-spacing:.02em}
 .toc-body{flex:1; min-width:0}
 .toc-body b{display:block; font-size:1rem}
 .toc-body span{color:var(--muted); font-size:0.8125rem}
+/* 読んだページ：枠を濃くし、グリフを塗りつぶして ✓ を付ける */
+.toc-item.read{border:2px solid var(--accent); padding:14px}
+.toc-item.read .toc-glyph{background:var(--accent); color:var(--bg); position:relative}
+.toc-item.read .toc-glyph::after{
+  content:'✓'; position:absolute; right:-5px; top:-5px; width:18px; height:18px;
+  border-radius:50%; background:var(--accent); color:var(--bg); border:2px solid var(--surface);
+  font:700 11px/18px system-ui,sans-serif; text-align:center;
+}
 
 /* ---------- 教科書：ページ ---------- */
 .hero{

@@ -28,10 +28,10 @@ const sessionSize = () => store.set.size;
 const store = load();
 function load(){
   try { const o = JSON.parse(localStorage.getItem(KEY)) || {};
-        return { rec:o.rec || {}, cells:o.cells || {},
+        return { rec:o.rec || {}, cells:o.cells || {}, read:o.read || {},
                  set:{ ...DEFAULTS, ...(o.set || {}) },
                  last:o.last || null }; }
-  catch(e){ return { rec:{}, cells:{}, set:{ ...DEFAULTS }, last:null }; }
+  catch(e){ return { rec:{}, cells:{}, read:{}, set:{ ...DEFAULTS }, last:null }; }
 }
 
 /* 設定を画面に反映する。CSS 側は data-theme / data-accent / --fs だけを見ている */
@@ -229,7 +229,8 @@ function tocItem(p, hint){
   const ex = EXERCISES.filter(e => e.ref === p.id);
   const ok = ex.filter(e => (store.rec[e.id]||{}).r > 0).length;
   const pct = ex.length ? Math.round(ok / ex.length * 100) : 0;
-  return `<button class="btn toc-item" data-open="${p.id}">
+  const read = store.read[p.id] ? ' read' : '';
+  return `<button class="btn toc-item${read}" data-open="${p.id}">
     <span class="toc-glyph" style="font-size:${glyphSize(pageGlyph(p))}px">${esc(pageGlyph(p))}</span>
     <span class="toc-body">
       <b>${esc(pageName(p))} ── ${esc(p.core)}</b>
@@ -260,6 +261,7 @@ function viewBookList(){
   const pct  = ex.length ? Math.round(done / ex.length * 100) : 0;
 
   const revealed = Object.keys(store.cells).length;
+  const nRead = pages.filter(p => store.read[p.id]).length;
 
   return `
     ${headRow('教科書')}
@@ -286,7 +288,7 @@ function viewBookList(){
 
     <p class="sub" style="margin:2px 0 10px">${esc(sec.note)}</p>
     <div class="progress"><i style="width:${pct}%"></i></div>
-    <p class="sub" style="margin:-10px 0 14px">${pages.length}ページ　・　演習 ${done} / ${ex.length}</p>
+    <p class="sub" style="margin:-10px 0 14px">読んだ ${nRead} / ${pages.length}ページ　・　演習 ${done} / ${ex.length}</p>
 
     ${groupedList(sec.type, pages)}`;
 }
@@ -306,6 +308,8 @@ function groupedList(type, pages){
 
 function viewBookPage(id){
   const p = TEXTBOOK.find(x => x.id === id);
+  /* 開いたら読んだことにする。目次で色が変わる */
+  if(!store.read[id]){ store.read[id] = 1; save(); }
   return `
     <button class="backlink" data-back>← 教科書</button>
     <div class="hero">
@@ -1304,7 +1308,7 @@ document.addEventListener('click', ev => {
   }
   if(d.reset !== undefined){ state.panel = 'reset'; render(); return; }
   if(d.resetYes !== undefined){
-    store.rec = {}; store.cells = {}; store.last = null; save();
+    store.rec = {}; store.cells = {}; store.read = {}; store.last = null; save();
     state.panel = null; state.quiz = null; state.vocab = null;
     state.tab = 'book'; state.page = null; render(); return;
   }
