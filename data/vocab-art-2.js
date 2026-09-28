@@ -161,10 +161,12 @@ Object.assign(VOCAB_ART, (() => {
     <circle cx="170" cy="98" r="14" fill="var(--accent)" opacity=".6"/>
     ${LB(120,124,'または（どちらか）')}`),
   say: A(`
-    <ellipse cx="112" cy="60" rx="20" ry="14" fill="var(--accent)"/>
-    <path d="M100 72 l-14 14 6 -18 z" fill="var(--accent)"/>
-    <path d="M150 48 q26 -4 30 18" fill="none" stroke="var(--muted)" stroke-width="2.5"/>
-    ${LB(120,120,'言う')}`),
+    ${PS(66,100)}
+    <ellipse cx="155" cy="48" rx="60" ry="32" fill="none" stroke="var(--accent)" stroke-width="3"/>
+    <path d="M100 76 L110 60 L118 78 Z" fill="var(--bg)" stroke="var(--accent)" stroke-width="3" stroke-linejoin="round"/>
+    <text x="155" y="58" text-anchor="middle" font-size="26" fill="var(--accent)"
+      font-family="-apple-system,sans-serif">…</text>
+    ${LB(120,124,'言う')}`),
   go: A(`
     ${PS(70,90)}
     ${ARW(96,80,190,50)}

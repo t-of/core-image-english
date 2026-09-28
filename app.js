@@ -730,7 +730,8 @@ function viewVocab(){
   /* 問題文。答え合わせのあとは、同じ情報を二度出さないよう作り分ける */
   let prompt, body;
   if(mode === 'ja'){
-    prompt = `<div class="v-word">${esc(w[0])}</div><div class="v-ipa">${esc(w[5])}</div>`;
+    /* 英→日は問題文にすでに単語が出ているので、品詞を見せてもヒントが増えすぎない */
+    prompt = `<div class="v-word">${esc(w[0])} ${posBadge(w[0])}</div><div class="v-ipa">${esc(w[5])}</div>`;
     body = `<div class="choices2">${q.choices.map(c => {
       let cls = 'btn choice';
       if(answered && c[0] === w[0]) cls += ' correct';
@@ -768,8 +769,8 @@ function viewVocab(){
   const result = !answered ? '' : `
     <div class="card v-result">
       <div class="verdict ${ok ? 'ok' : 'ng'}" role="status" aria-live="polite">${
-        ok ? '◎ 正解' : '✗ 不正解'}</div>
-      ${showWord ? `<div class="v-word" style="font-size:1.375rem">${esc(w[0])}</div>
+        ok ? '◎ 正解' : '✗ 不正解'}${verbFormsRow(w[0])}</div>
+      ${showWord ? `<div class="v-word" style="font-size:1.375rem">${esc(w[0])} ${posBadge(w[0])}</div>
                     <div class="v-ipa">${esc(w[5])}</div>` : ''}
       ${vocabSenses(w)}
       ${w[6] ? `<button class="linkto" data-goto="${w[6]}" data-sense=""
@@ -809,16 +810,83 @@ function vocabTrivia(w){
   </div>`;
 }
 
+/* 品詞バッジ。VOCAB_POS に無い語（読み込み前など）では何も出さない */
+function posBadge(word){
+  const p = typeof VOCAB_POS !== 'undefined' ? VOCAB_POS[word] : null;
+  return p ? `<span class="pos-badge">${esc(p)}</span>` : '';
+}
+
+/* 動詞・助動詞の活用（現在形 / 過去形 / 過去分詞）。答え合わせの行に右詰めで添える */
+function verbFormsRow(word){
+  const f = typeof VOCAB_FORMS !== 'undefined' ? VOCAB_FORMS[word] : null;
+  if(!f) return '';
+  return `<span class="v-forms">${esc(f[0])} / ${esc(f[1])} / ${esc(f[2])}</span>`;
+}
+
+/* 例文の中で見出し語が活用しているとき、その形を色分けして出す。
+   -ing・三単現は綴りの規則から作る（データは持たない）。過去形・過去分詞は
+   VOCAB_FORMS の明示データを使う。esc() を通したあとの HTML に対して、
+   英字の単語境界だけを狙って安全に差し込む */
+const ING_DOUBLE = new Set(['stop','plan','drop','step','prefer','occur','refer','control','program',
+  'shop','kid','trip','bar','star','drug','get','set','put','cut','hit','let','run','win','begin','forget','sit','fit']);
+const VOWEL_Y = new Set(['play','stay','enjoy','employ']);
+const KEEP_E_ING = new Set(['see','agree','free']);
+
+function thirdPersonForm(base){
+  if(base === 'have') return 'has';
+  if(/[sxz]$|[cs]h$|o$/.test(base)) return base + 'es';
+  if(/[^aeiou]y$/.test(base) && !VOWEL_Y.has(base)) return base.slice(0, -1) + 'ies';
+  return base + 's';
+}
+function ingForm(base){
+  if(base.endsWith('ie')) return base.slice(0, -2) + 'ying';
+  if(KEEP_E_ING.has(base)) return base + 'ing';
+  if(base.endsWith('e')) return base.slice(0, -1) + 'ing';
+  if(ING_DOUBLE.has(base)) return base + base[base.length - 1] + 'ing';
+  return base + 'ing';
+}
+
+/* 見出し語の活用ごとの綴り→ラベル。'be' のように現在形が1つでない語は対象外
+   （am/is/are のどれに強調を当てればよいか綴りだけでは決められないため） */
+function inflectionSpellings(word){
+  const f = typeof VOCAB_FORMS !== 'undefined' ? VOCAB_FORMS[word] : null;
+  if(!f || f[0].includes('/')) return null;
+  const [base, past, pp] = f;
+  const map = new Map();
+  const add = (sp, label) => {
+    if(!sp || sp === '–' || sp.toLowerCase() === base.toLowerCase()) return;
+    const key = sp.toLowerCase();
+    map.set(key, map.has(key) && map.get(key) !== label ? `${map.get(key)}/${label}` : label);
+  };
+  add(thirdPersonForm(base), '三単現');
+  add(ingForm(base), '-ing');
+  add(past, past === pp ? '過去形/過去分詞' : '過去形');
+  if(pp !== past) add(pp, '過去分詞');
+  return map;
+}
+
+function markInflection(word, escapedText){
+  const spellings = inflectionSpellings(word);
+  if(!spellings) return escapedText;
+  let html = escapedText;
+  for(const [sp, label] of [...spellings.entries()].sort((a, b) => b[0].length - a[0].length)){
+    const re = new RegExp('\\b(' + sp.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + ')\\b', 'i');
+    html = html.replace(re, `<span class="v-infl" data-infl="${esc(label)}">$1</span>`);
+  }
+  return html;
+}
+
 /* 意味ごとの例文。意味が1つなら1つだけ、複数あればその数だけ並べる */
 function vocabSenses(w){
+  const badge = posBadge(w[0]);
   const extra = typeof VOCAB_SENSES !== 'undefined' ? VOCAB_SENSES[w[0]] : null;
   if(!extra) return `
-    <div class="v-ja" style="font-size:1rem;margin-top:6px">${esc(w[1])}</div>
-    <div class="v-ex">${esc(w[3])}<div class="ja">${esc(w[4])}</div></div>`;
-  return `<div class="v-senses">${extra.map(s => `
+    <div class="v-ja" style="font-size:1rem;margin-top:6px">${badge}${esc(w[1])}</div>
+    <div class="v-ex">${markInflection(w[0], esc(w[3]))}<div class="ja">${esc(w[4])}</div></div>`;
+  return `<div class="v-senses">${badge}${extra.map(s => `
     <div class="v-sense">
       <div class="m">${esc(s[0])}</div>
-      <div class="e">${esc(s[1])}</div>
+      <div class="e">${markInflection(w[0], esc(s[1]))}</div>
       <div class="j">${esc(s[2])}</div>
     </div>`).join('')}</div>`;
 }
