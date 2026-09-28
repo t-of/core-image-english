@@ -449,37 +449,42 @@ h1{font-size:1.1875rem; margin:4px 0 14px; letter-spacing:.02em}
 .v-input.ok{border-color:var(--ok); background:var(--ok-soft)}
 .v-input.ng{border-color:var(--ng); background:var(--ng-soft)}
 
-/* ---------- 5文字あてゲーム ---------- */
-.g-board{display:flex; flex-direction:column; gap:6px; margin-bottom:12px}
-.g-row{display:flex; align-items:center; gap:8px}
-.g-cells{display:flex; gap:5px; flex:1; min-width:0}
+/* ---------- 5文字あてゲーム ----------
+   8行の盤面とキーボードが、360×640 でも1画面に収まる大きさにしてある。
+   マスは最大34px角。数字の枠は全行に同じ幅で確保し（推測前は空の丸）、
+   数字のある行だけ細くならないようにする。キーボードのキーはマスより
+   縦を長くして、盤面より押しやすい大きさに見せる */
+.g-board{display:flex; flex-direction:column; gap:3px; margin-bottom:6px}
+.g-row{display:flex; align-items:center; gap:5px}
+.g-cells{display:flex; gap:3px; flex:1; min-width:0}
 .g-cell{
-  flex:1; min-width:0; aspect-ratio:1; display:flex; align-items:center; justify-content:center;
-  border:1px solid var(--line); border-radius:8px; background:var(--surface);
-  font-family:Georgia,serif; font-weight:700; font-size:1.0625rem; color:var(--text);
+  flex:1; min-width:0; max-width:28px; aspect-ratio:1; display:flex; align-items:center; justify-content:center;
+  border:1px solid var(--line); border-radius:6px; background:var(--surface);
+  font-family:Georgia,serif; font-weight:700; font-size:0.75rem; color:var(--text);
   user-select:none;
 }
 .g-cell.filled{border-color:var(--accent)}
 .g-cell.off{background:var(--surface2); color:var(--muted); border-color:var(--surface2)}
 .g-cell.on{background:var(--ok-soft); color:var(--ok); border-color:var(--ok)}
-.g-score{display:flex; gap:4px; flex:0 0 auto}
+.g-score{display:flex; gap:3px; flex:0 0 auto}
 .gn{
-  width:20px; height:20px; border-radius:50%; display:flex; align-items:center; justify-content:center;
-  font-size:0.6875rem; font-weight:700; color:#fff;
+  width:15px; height:15px; border-radius:50%; display:flex; align-items:center; justify-content:center;
+  font-size:0.5rem; font-weight:700; color:#fff;
 }
 .gn.green{background:var(--ok)}
 .gn.yellow{background:#c99a1f}
 .gn.red{background:var(--ng)}
-.g-msg{color:var(--ng); font-size:0.8125rem; margin:-4px 0 10px}
+.gn.blank{background:transparent; border:1px solid var(--line)}
+.g-msg{color:var(--ng); font-size:0.8125rem; margin:-2px 0 6px}
 
-.g-kb{display:flex; flex-direction:column; gap:6px; margin-top:10px}
+.g-kb{display:flex; flex-direction:column; gap:4px; margin-top:6px}
 .g-kbrow{display:flex; gap:3px; justify-content:center}
 .g-key{
-  width:28px; height:40px; border:1px solid var(--line); border-radius:6px;
-  background:var(--surface); color:var(--text); font:inherit; font-size:0.8125rem; font-weight:700;
+  width:24px; height:36px; border:1px solid var(--line); border-radius:6px;
+  background:var(--surface); color:var(--text); font:inherit; font-size:0.75rem; font-weight:700;
   cursor:pointer; user-select:none;
 }
-.g-key.wide{width:42px; font-size:0.625rem}
+.g-key.wide{width:36px; font-size:0.5625rem}
 .g-key.off{background:var(--surface2); color:var(--muted)}
 .g-key.on{background:var(--ok-soft); color:var(--ok); border-color:var(--ok)}
 .g-key:active{transform:scale(.94)}

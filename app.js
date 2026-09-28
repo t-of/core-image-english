@@ -963,20 +963,29 @@ function submitGuess(){
 
 const gMarkCls = ch => { const s = state.game.marks[ch] || 0; return s === 1 ? ' off' : s === 2 ? ' on' : ''; };
 
+/* 数字の枠は、まだ推測していない行にも同じ幅だけ空けておく（空の丸）。
+   そうしないと、数字のある行だけマスが細くなり、行ごとに幅がそろわない */
+function gameScoreCol(score){
+  if(!score) return `<div class="g-score">
+    <span class="gn blank"></span><span class="gn blank"></span><span class="gn blank"></span></div>`;
+  return `<div class="g-score">
+    <span class="gn green">${score.green}</span>
+    <span class="gn yellow">${score.yellow}</span>
+    <span class="gn red">${score.red}</span>
+  </div>`;
+}
+function gameRow(cellsHtml, score){
+  return `<div class="g-row"><div class="g-cells">${cellsHtml}</div>${gameScoreCol(score)}</div>`;
+}
 function gameGuessRow(guess){
   const cells = guess.word.split('').map(ch =>
     `<div class="g-cell${gMarkCls(ch)}" data-gmark="${ch}">${ch.toUpperCase()}</div>`).join('');
-  return `<div class="g-row"><div class="g-cells">${cells}</div>
-    <div class="g-score">
-      <span class="gn green">${guess.score.green}</span>
-      <span class="gn yellow">${guess.score.yellow}</span>
-      <span class="gn red">${guess.score.red}</span>
-    </div></div>`;
+  return gameRow(cells, guess.score);
 }
 function gameEmptyRow(typed){
   const cells = Array.from({ length:5 }, (_, i) =>
     `<div class="g-cell${typed && typed[i] ? ' filled' : ''}">${typed && typed[i] ? typed[i].toUpperCase() : ''}</div>`).join('');
-  return `<div class="g-row"><div class="g-cells">${cells}</div></div>`;
+  return gameRow(cells, null);
 }
 
 const G_ROWS = ['qwertyuiop', 'asdfghjkl', 'zxcvbnm'];
@@ -999,14 +1008,14 @@ function viewGame(){
   return `
     ${headRow('単語')}
     ${vocabTabs()}
-    <p class="sub">5文字の単語を8回まで当てます。緑＝位置も文字も合う数、黄＝文字は合うが位置違いの数、赤＝含まれない数。
-      どの文字かは教えません。行の文字を押すと、自分で「ない」「ある」の印をつけられます。</p>
+    <p class="sub" style="margin:-8px 0 6px; font-size:0.75rem; line-height:1.4">
+      5文字を8回まで。緑＝位置も文字も合う／黄＝文字のみ合う／赤＝含まれない。文字を押すと印をつけられます。</p>
 
     <div class="g-board">${rows.join('')}</div>
     ${g.msg ? `<p class="g-msg">${esc(g.msg)}</p>` : ''}
     ${g.over ? '' : gameKeyboard()}
 
-    ${g.over ? `<div class="card v-result" style="margin-top:14px">
+    ${g.over ? `<div class="card v-result" style="margin-top:10px">
       <div class="verdict ${g.won ? 'ok' : 'ng'}" role="status" aria-live="polite">${
         g.won ? '◎ 正解' : '✗ 不正解'}</div>
       <div class="v-word" style="font-size:1.375rem">${esc(w[0])}</div>
@@ -1015,7 +1024,7 @@ function viewGame(){
       <button class="btn primary" data-greset style="margin-top:12px">もう一回</button>
     </div>` : ''}
 
-    <p class="sub" style="margin-top:14px">これまで ${store.game.played}回中 ${store.game.correct}回正解</p>`;
+    <p class="sub" style="margin:6px 0 0; font-size:0.75rem">これまで ${store.game.played}回中 ${store.game.correct}回正解</p>`;
 }
 
 /* ============================================================

@@ -18,7 +18,7 @@
    「どうも古いままだ」というときの最終手段として日付を上げてもよい。
    ============================================================ */
 const PREFIX = 'core-image-english-';
-const CACHE = PREFIX + 'v9';
+const CACHE = PREFIX + 'v10';
 
 const ASSETS = [
   './',
