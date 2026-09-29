@@ -79,7 +79,7 @@ self.addEventListener('fetch', e => {
      これがないと、応答を返した直後に Service Worker が止められ、
      取り直しが途中で捨てられて更新が届かないことがある */
   const network = caches.open(CACHE).then(cache =>
-    fetch(req).then(res => {
+    fetch(req, { cache: 'no-cache' }).then(res => {
       if(res && res.ok) cache.put(req, res.clone());
       return res;
     }).catch(() => null));
